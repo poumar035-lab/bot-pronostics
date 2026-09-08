@@ -122,8 +122,9 @@ def format_prediction(result):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from config import BOT_NAME
     welcome = (
-        "⚽ Bot Pronostics Football ⚽\n\n"
+        f"⚽ {BOT_NAME} ⚽\n\n"
         "Salut ! Envoie-moi un match et je te donne les pronostics détaillés.\n\n"
         "📋 Comment ça marche:\n"
         "   Envoie: NomEquipe1 vs NomEquipe2\n"

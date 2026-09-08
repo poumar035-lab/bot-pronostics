@@ -6,6 +6,9 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
 
+BOT_NAME = os.getenv("BOT_NAME", "Toshiba Prono")
+BOT_LANG = os.getenv("BOT_LANG", "fr").lower()
+
 FOOTBALL_API_BASE = "https://api.football-data.org/v4"
 
 LEAGUES = {
