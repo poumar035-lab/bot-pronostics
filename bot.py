@@ -1,5 +1,7 @@
 import sys
 import io
+import asyncio
+import datetime
 import logging
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -15,7 +17,15 @@ from telegram.ext import (
 )
 from analyzer import MatchAnalyzer
 from data_collector import FootballDataCollector
-from config import TELEGRAM_TOKEN
+from config import TELEGRAM_TOKEN, DAILY_HOUR, DAILY_MINUTE, PROMO_CODE
+import daily
+from daily import (
+    is_subscribed,
+    add_subscriber,
+    remove_subscriber,
+    build_daily_prediction,
+    format_daily_prediction,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -132,6 +142,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔧 Commandes:\n"
         "   /start - Afficher ce message\n"
         "   /matchs - Voir les prochains matchs\n"
+        "   /jour - Prono du plus grand match du jour\n"
+        "   /abonner - Recevoir le prono chaque jour (push)\n"
         "   /help - Aide\n"
         "   /legues - Lire les ligues disponibles\n\n"
         "⚠️ Les pronostics sont basés sur des stats et du calcul.\n"
@@ -158,6 +170,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "   - BTTS\n"
         "   - Double chance\n"
         "   - Recommandation\n\n"
+        "📅 PRONO DU JOUR :\n"
+        "   /jour - Prono du jour instantané\n"
+        "   /abonner - Recevoir le prono automatiquement chaque jour\n"
+        "   /desabonner - Arrêter les pronos quotidiens\n\n"
         "💡 Conseil: Utilise les noms en anglais pour plus de précision.\n"
         "Ex: 'Manchester United' plutôt que 'Man Utd'"
     )
@@ -206,6 +222,55 @@ async def matchs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "💡 Envoie un match pour obtenir le pronostic:\n"
     msg += "Ex: PSG vs Marseille"
     await update.message.reply_text(msg)
+
+
+async def jour_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔮 Calcul du prono du jour... (quelques secondes)")
+    try:
+        text, result = build_daily_prediction()
+        if not text:
+            await update.message.reply_text("Aucun match trouvé aujourd'hui. Réessaie avec un match manuel (ex: PSG vs Marseille).")
+            return
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+
+
+async def abonner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username or ""
+    if add_subscriber(chat_id, username):
+        promo = f"\n🎁 Utilise mon code promo 1xBet : {PROMO_CODE}" if PROMO_CODE else ""
+        await update.message.reply_text(
+            f"✅ Tu es abonné au PRONO DU JOUR !\n"
+            f"Tu recevras chaque jour à {DAILY_HOUR:02d}:{DAILY_MINUTE:02d} (UTC) "
+            f"le pronostic du plus grand match du jour.{promo}"
+        )
+    else:
+        await update.message.reply_text("Tu es déjà abonné !")
+
+
+async def desabonner_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if remove_subscriber(chat_id):
+        await update.message.reply_text("❌ Tu es désabonné du prono du jour.")
+    else:
+        await update.message.reply_text("Tu n'étais pas abonné.")
+
+
+async def daily_job(context: ContextTypes.DEFAULT_TYPE):
+    text, _ = build_daily_prediction()
+    if not text:
+        logger.info("Aucun prono du jour (pas de matchs trouvés)")
+        return
+    promo = f"\n\n🎁 Parie chez 1xBet avec le code : {PROMO_CODE}" if PROMO_CODE else ""
+    subs = daily.load_subscribers()
+    for chat_id in subs:
+        try:
+            await context.bot.send_message(chat_id=int(chat_id), text=text + promo)
+            await asyncio.sleep(1.5)
+        except Exception as e:
+            logger.warning(f"Envoi quotidien échoué pour {chat_id}: {e}")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -271,8 +336,22 @@ def main():
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("legues", legues))
     app.add_handler(CommandHandler("matchs", matchs_cmd))
+    app.add_handler(CommandHandler("jour", jour_cmd))
+    app.add_handler(CommandHandler("prono", jour_cmd))
+    app.add_handler(CommandHandler("abonner", abonner_cmd))
+    app.add_handler(CommandHandler("desabonner", desabonner_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
+
+    # Planification du prono quotidien
+    tz = datetime.timezone.utc
+    app.job_queue.run_daily(
+        daily_job,
+        time=datetime.time(hour=DAILY_HOUR, minute=DAILY_MINUTE, tzinfo=tz),
+    )
+    logger.info(
+        f"Push quotidien planifié à {DAILY_HOUR:02d}:{DAILY_MINUTE:02d} UTC"
+    )
 
     logger.info("Bot démarré ! Envoie /start sur Telegram.")
     app.run_polling()

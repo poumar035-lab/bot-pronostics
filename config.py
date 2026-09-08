@@ -9,6 +9,10 @@ FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
 BOT_NAME = os.getenv("BOT_NAME", "Toshiba Prono")
 BOT_LANG = os.getenv("BOT_LANG", "fr").lower()
 
+DAILY_HOUR = int(os.getenv("DAILY_HOUR", "18"))
+DAILY_MINUTE = int(os.getenv("DAILY_MINUTE", "0"))
+PROMO_CODE = os.getenv("PROMO_CODE", "")
+
 FOOTBALL_API_BASE = "https://api.football-data.org/v4"
 
 LEAGUES = {
